@@ -32,5 +32,6 @@ claude mcp add mothermachine -- node ~/.claude/skills/mothermachine/scripts/mcp.
 - `scripts/search.mjs`: the search over the site's `index/search.json`, also a command line.
 - `scripts/mcp.mjs`: the MCP server over the same search.
 - `scripts/*.test.mjs`: tests, run with `node --test scripts/`.
+- `LICENSE`: MIT, the same as the source repository.
 
 Everything reads the live site, so the installed copy never goes stale on data; reinstall to pick up changes to the scripts.
