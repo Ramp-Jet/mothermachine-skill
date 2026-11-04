@@ -13,6 +13,7 @@ function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mm-mcp-"));
   fs.mkdirSync(path.join(root, "index")); fs.mkdirSync(path.join(root, "apps"));
   fs.writeFileSync(path.join(root, "index/search.json"), JSON.stringify({ version: 1, count: 2, listings: Object.values(L) }));
+  fs.writeFileSync(path.join(root, "index/alternatives.json"), JSON.stringify({ products: [{ product: "Calendly", page: "alternatives/calendly.html" }, { product: "Notion", page: null }] }));
   fs.writeFileSync(path.join(root, "index/vocab.json"), JSON.stringify({ fields: [{ name: "vertical", values: [{ value: "scheduling-staffing", count: 1 }, { value: "notes-knowledge", count: 1 }] }] }));
   for (const [slug, l] of Object.entries(L)) fs.writeFileSync(path.join(root, `apps/${slug}.json`), JSON.stringify({ listing: { ...l, description: `${l.name} in full.`, repos: [{ url: `https://github.com/${slug.replace("--", "/")}`, license: l.license, stars: 10, lastCommit: "2026-09-01" }], editions: [], customization: l.effort ? { effort: l.effort, editCount: l.editCount, summary: "Edit .env.", envVars: ["DATABASE_URL"] } : null, interface: { kind: l.interfaceKind }, reach: [], confidence: {}, openQuestions: [] } }));
   return root;
@@ -69,6 +70,24 @@ test("search ranks with the same function the skill uses, honours filters, and r
     assert.ok(f.results.length > 0 && f.results.every(x => x.vertical === "notes-knowledge" && x.capabilities.includes("operable")));
     const none = text(await c.call("tools/call", { name: "search", arguments: { query: "kubernetes operator for mainframes" } }));
     assert.equal(none.results.length, 0); assert.match(none.hint, /fewer words|vertical/);
+  } finally { c.kill(); site.close(); }
+});
+
+test("search takes interface and open as filters, links the compare page, and says when a result is thin", async () => {
+  const site = await serve(); const c = client(site.base);
+  try {
+    await c.call("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } });
+    const tool = (await c.call("tools/list")).result.tools.find(t => t.name === "search");
+    assert.ok(tool.inputSchema.properties.interface && tool.inputSchema.properties.open, "the schema offers both filters");
+    const mcp = text(await c.call("tools/call", { name: "search", arguments: { query: "", interface: "mcp" } }));
+    assert.deepEqual(mcp.results.map(x => x.slug), ["acme--notes"]);
+    const open = text(await c.call("tools/call", { name: "search", arguments: { query: "", open: true } }));
+    assert.deepEqual(open.results.map(x => x.slug).sort(), ["acme--notes", "cal--diy"], "both fixture licenses are open source");
+    const r = text(await c.call("tools/call", { name: "search", arguments: { query: "calendly" } }));
+    assert.deepEqual(r.compare, [{ product: "Calendly", page: `${site.base}/alternatives/calendly.html` }]);
+    assert.match(r.hint, /Thin result/);
+    const n = text(await c.call("tools/call", { name: "search", arguments: { query: "notion" } }));
+    assert.deepEqual(n.compare, [], "a product without a page gets no link");
   } finally { c.kill(); site.close(); }
 });
 

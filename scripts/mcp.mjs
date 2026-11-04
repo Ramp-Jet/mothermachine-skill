@@ -10,9 +10,9 @@
 // notifications ignored. Written out here rather than taken from an SDK so that one file installs from the site.
 import { createInterface } from "node:readline";
 import { stdin, stdout, env, argv } from "node:process";
-import { rank, get, loadIndex, detailOf } from "./search.mjs";
+import { rank, get, loadIndex, detailOf, alternativesPages, hint } from "./search.mjs";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const base = (env.MOTHERMACHINE_BASE || (argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "") || "https://mothermachine.ai").replace(/\/$/, "");
 
@@ -25,6 +25,8 @@ const TOOLS = [
       operability: { type: "string", description: "How an agent drives it; vocab lists the values (native, official, wrapped, config, gui)." },
       operable: { type: "boolean", description: "Only listings an agent can operate through an interface." },
       adaptable: { type: "boolean", description: "Only listings whose source is public with a named surface to change." },
+      interface: { type: "string", enum: ["mcp", "api", "cli", "sdk", "config", "gui"], description: "Only listings an agent drives through this interface kind. mcp also includes listings whose builder ships an MCP server beside another interface." },
+      open: { type: "boolean", description: "Only open source listings by the site's rule: an open license, no source-available or Commons Clause terms, and no closed core." },
       limit: { type: "integer", minimum: 1, maximum: 25, description: "How many results; default 8." } },
       additionalProperties: false },
     annotations: { title: "Search mothermachine", readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } },
@@ -41,11 +43,16 @@ const strip = ({ effortRank, score, matched, ...l }) => ({ ...l, score, matched,
 async function run(name, a = {}) {
   if (name === "search") {
     const idx = await loadIndex(base);
-    const filters = { vertical: a.vertical || null, effort: a.effort || null, operability: a.operability || null, operable: !!a.operable, adaptable: !!a.adaptable };
+    const filters = { vertical: a.vertical || null, effort: a.effort || null, operability: a.operability || null, operable: !!a.operable, adaptable: !!a.adaptable, interface: a.interface || null, open: !!a.open };
     const limit = Math.min(Math.max(Number(a.limit) || 8, 1), 25);
-    const results = rank(idx.listings, String(a.query || ""), filters).slice(0, limit).map(strip);
-    return { base, query: String(a.query || ""), filters, searched: idx.count, count: results.length, results,
-      ...(results.length ? {} : { hint: "No matches. Try fewer words, a vertical from vocab, or the name of the product to replace." }) };
+    const query = String(a.query || "");
+    const all = rank(idx.listings, query, filters);
+    const results = all.slice(0, limit).map(strip);
+    // The compare page for a named product, when the site has one. One more small fetch, only on a product hit.
+    let compare = [];
+    if (results.some(r => r.product)) { try { compare = alternativesPages(results, query, (await get(base, "index/alternatives.json")).products).map(c => ({ ...c, page: `${base}/${c.page}` })); } catch { compare = []; } }
+    return { base, query, filters, searched: idx.count, count: results.length, compare, results,
+      ...(all.length < 3 && query ? { hint: `${all.length ? "Thin result. " : "No matches. "}${hint(query)}` } : {}) };
   }
   if (name === "listing") {
     if (!SLUG.test(String(a.slug || ""))) throw new Error("slug must be owner--name, letters, digits, dots, dashes and underscores only");
@@ -63,7 +70,7 @@ async function handle(msg) {
   const { id, method, params = {} } = msg;
   if (id === undefined) return; // notification: nothing to answer
   try {
-    if (method === "initialize") return reply(id, { protocolVersion: PROTOCOLS.includes(params.protocolVersion) ? params.protocolVersion : PROTOCOLS[0], capabilities: { tools: {} }, serverInfo: { name: "mothermachine", version: VERSION }, instructions: `Directory of software an agent can adapt or operate, read from ${base}. Use search with the user's own words or the product to replace, then listing for the one or two that fit.` });
+    if (method === "initialize") return reply(id, { protocolVersion: PROTOCOLS.includes(params.protocolVersion) ? params.protocolVersion : PROTOCOLS[0], capabilities: { tools: {} }, serverInfo: { name: "mothermachine", version: VERSION }, instructions: `Directory of software an agent can adapt or operate, read from ${base}. Use search with the user's own words or the product to replace, then listing for the one or two that fit. Pass interface: "mcp" when the user needs MCP and open: true when they say open source; the words alone do not filter. A listing's verdict says whether the curator verified the record; most are unverified.` });
     if (method === "ping") return reply(id, {});
     if (method === "tools/list") return reply(id, { tools: TOOLS });
     if (method === "tools/call") {
