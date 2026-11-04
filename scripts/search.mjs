@@ -89,7 +89,7 @@ export function line(l, base) {
   const caps = (l.capabilities || []).map(c => c[0].toUpperCase()).join("+");
   const yours = l.effort ? `${l.effort}${l.editCount != null ? ` (${l.editCount} to edit)` : ""}` : "–";
   const agent = l.operability ? `${l.operability}/${l.interfaceKind || "?"}${l.coverage ? ` ${l.coverage}` : ""}` : "–";
-  return `${l.slug}\n  ${l.tagline || l.summary}\n  ${caps} · yours: ${yours} · agent: ${agent} · ${l.license || "no licence"}${l.paid ? " · paid edition" : ""}${(l.alternativeTo || []).length ? ` · alt to ${l.alternativeTo.join(", ")}` : ""}\n  ${base}/${l.url}  json: ${base}/apps/${l.slug}.json`;
+  return `${l.slug}\n  ${l.tagline || l.summary}\n  ${caps} · yours: ${yours} · agent: ${agent} · ${l.license || "no license"}${l.paid ? " · paid edition" : ""}${(l.alternativeTo || []).length ? ` · alt to ${l.alternativeTo.join(", ")}` : ""}\n  ${base}/${l.url}  json: ${base}/apps/${l.slug}.json`;
 }
 
 async function main() {
