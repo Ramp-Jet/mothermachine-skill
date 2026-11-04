@@ -1,6 +1,6 @@
 // node --test skills/mothermachine/scripts/search.test.mjs
 import test from "node:test"; import assert from "node:assert/strict";
-import { rank } from "./search.mjs";
+import { rank, detailOf, line } from "./search.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -53,4 +53,27 @@ test("the script runs as a command when invoked through a symlinked path, as a s
   const r = spawnSync(process.execPath, [path.join(link, "search.mjs"), "invoice", "--base", "http://127.0.0.1:9"], { encoding: "utf8", timeout: 20000 });
   assert.equal(r.status, 1, `expected the search to run and fail on the unreachable base; stdout=${JSON.stringify(r.stdout)} stderr=${JSON.stringify(r.stderr)}`);
   assert.match(r.stderr, /mothermachine search failed/);
+});
+test("A2A words find listings that record A2A support, and no others", () => {
+  const withA2a = [...L, { slug: "d--gateway", name: "Portly", tagline: "A gateway for paid APIs", useWhen: [], alternativeTo: [], vertical: "ecommerce", capabilities: ["operable"], effort: null, operability: "official", coverage: "partial", interfaceKind: "mcp", a2a: "server" }];
+  assert.deepEqual(rank(withA2a, "a2a").map(r => r.slug), ["d--gateway"]);
+  assert.equal(rank(withA2a, "agent2agent")[0]?.slug, "d--gateway");
+  assert.deepEqual(rank(L, "a2a"), []);
+});
+test("the headline phrase finds A2A listings instead of every listing", () => {
+  const withA2a = [...L, { slug: "d--gateway", name: "Portly", tagline: "A gateway for paid APIs", useWhen: [], alternativeTo: [], vertical: "ecommerce", capabilities: ["operable"], a2a: "server" }];
+  for (const q of ["agent-to-agent", "agent to agent", "agents to agents", "agent_to_agent", "agent to agent software", "Agent2Agent"]) assert.deepEqual(rank(withA2a, q).map(r => r.slug), ["d--gateway"], q);
+});
+test("with A2A in the query, an Agent Card means the protocol's, not a payment card", () => {
+  const cards = [{ slug: "e--pay", name: "Payly", tagline: "Spend management with agent cards", useWhen: ["I issue a card"], alternativeTo: [], vertical: "invoicing-finance", capabilities: ["operable"], a2a: null },
+    { slug: "d--gateway", name: "Portly", tagline: "A gateway for paid APIs", useWhen: [], alternativeTo: [], vertical: "ecommerce", capabilities: ["operable"], a2a: "server" }];
+  assert.equal(rank(cards, "a2a agent card")[0].slug, "d--gateway");
+  assert.deepEqual(rank(cards, "agent card").map(r => r.slug), ["e--pay"], "without A2A the words keep their plain meaning");
+});
+test("the detail view and the result line carry A2A support", () => {
+  const a2a = { role: "server", status: "experimental", protocolVersion: "1.0", bindings: ["JSONRPC"], agentCard: null, cardPath: "/.well-known/agent-card.json", url: "https://acme.example/a2a", official: true, evidence: "seen" };
+  assert.deepEqual(detailOf({ slug: "d", url: "apps/d.html", a2a }, "https://x").a2a, a2a);
+  assert.equal(detailOf({ slug: "d", url: "apps/d.html" }, "https://x").a2a, null);
+  assert.match(line({ slug: "d", url: "apps/d.html", tagline: "t", capabilities: ["operable"], a2a: "server" }, "https://x"), /A2A: server/);
+  assert.doesNotMatch(line({ slug: "d", url: "apps/d.html", tagline: "t", capabilities: ["operable"], a2a: null }, "https://x"), /A2A/);
 });

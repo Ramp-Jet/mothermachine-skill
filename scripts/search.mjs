@@ -30,13 +30,18 @@ const HINT = new Set(["api", "rest", "mcp", "cli", "sdk", "server", "docker", "w
 const FIELDS = l => [
   [l.name, 5], [(l.alternativeTo || []).join(" "), 5], [l.slug, 3], [l.tagline || l.summary, 3],
   [(l.useWhen || []).join(" "), 2], [l.vertical, 2], [l.shape, 1], [(l.accounts || []).join(" "), 1],
+  [l.a2a ? "a2a" : "", 3],
 ];
 // A query token hits a field when its stem is a word there, or (five letters or more) when it appears inside a word:
 // "calendly" should find "Calendly-style", "booking" should find "bookings".
 const hit = (t, text, ft) => ft.has(t) || (t.length >= 5 && String(text || "").toLowerCase().includes(t));
 
+// "agent" and "to" are stop words, so the spelled-out protocol name would otherwise reduce to nothing and match everything.
+// Beside A2A, an Agent Card is the protocol's; alone, the words stay plain because some finance products issue cards with that name.
+const a2aQuery = q => { const s = String(q || "").replace(/\bagents?[-_ ]?(to|2)[-_ ]?agents?\b/gi, "a2a"); return /\ba2a\b/i.test(s) ? s.replace(/\bagent[- ]cards?\b/gi, " ") : s; };
+
 export function rank(listings, q, filters = {}) {
-  const qt = [...new Set(tokens(q).map(stem))];
+  const qt = [...new Set(tokens(a2aQuery(q)).map(stem))];
   // Words that appear in many listings say little about which one the user means. Weight by rarity.
   const df = Object.fromEntries(qt.map(t => [t, listings.filter(l => FIELDS(l).some(([text]) => hit(t, text, new Set(tokens(text).map(stem))))).length]));
   const rarity = t => 1 / Math.log2(2 + (df[t] || 0));
@@ -83,13 +88,14 @@ export function detailOf(l, base) {
     editions: (l.editions || []).map(e => ({ name: e.name, price: e.price, open: e.open, get: (e.distributions || []).map(d => d.command || d.image || d.url).filter(Boolean) })),
     adaptable: l.customization ? { effort: l.customization.effort, editCount: l.customization.editCount, summary: l.customization.summary, envVars: l.customization.envVars, configFiles: l.customization.configFiles, promptFiles: l.customization.promptFiles } : null,
     operable: l.interface ? { operability: l.operability, interface: l.interface, coverage: l.coverage, reach: l.reach, recommendedWrapper: l.recommendedWrapper } : null,
+    a2a: l.a2a ?? null,
     confidence: l.confidence, openQuestions: l.openQuestions, lastActivity: l.lastActivity };
 }
 export function line(l, base) {
   const caps = (l.capabilities || []).map(c => c[0].toUpperCase()).join("+");
   const yours = l.effort ? `${l.effort}${l.editCount != null ? ` (${l.editCount} to edit)` : ""}` : "–";
   const agent = l.operability ? `${l.operability}/${l.interfaceKind || "?"}${l.coverage ? ` ${l.coverage}` : ""}` : "–";
-  return `${l.slug}\n  ${l.tagline || l.summary}\n  ${caps} · yours: ${yours} · agent: ${agent} · ${l.license || "no license"}${l.paid ? " · paid edition" : ""}${(l.alternativeTo || []).length ? ` · alt to ${l.alternativeTo.join(", ")}` : ""}\n  ${base}/${l.url}  json: ${base}/apps/${l.slug}.json`;
+  return `${l.slug}\n  ${l.tagline || l.summary}\n  ${caps} · yours: ${yours} · agent: ${agent} · ${l.license || "no license"}${l.a2a ? ` · A2A: ${l.a2a}` : ""}${l.paid ? " · paid edition" : ""}${(l.alternativeTo || []).length ? ` · alt to ${l.alternativeTo.join(", ")}` : ""}\n  ${base}/${l.url}  json: ${base}/apps/${l.slug}.json`;
 }
 
 async function main() {

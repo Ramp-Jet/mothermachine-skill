@@ -29,9 +29,9 @@ If nothing fits, say that plainly and suggest the nearest vertical, or the Candi
    node <skill-dir>/scripts/search.mjs "<the user's need in their words>" [--vertical v] [--effort e] [--operable] [--adaptable] [--limit n]
    ```
 
-   Verticals: content-publishing, ecommerce, notes-knowledge, invoicing-finance, smb-ops-crm, support-bookkeeping, scheduling-staffing, video-streaming. Effort: config-only, light-edit, fork-and-modify. `--vocab` prints every field's values with counts if the user's words map to nothing obvious.
+   Verticals: content-publishing, ecommerce, notes-knowledge, invoicing-finance, smb-ops-crm, support-bookkeeping, scheduling-staffing, video-streaming, agent-infrastructure. Effort: config-only, light-edit, fork-and-modify. `--vocab` prints every field's values with counts if the user's words map to nothing obvious.
 
-   Two habits make this reliable. Put the named product first if the user gave one ("calendly team booking" beats a paraphrase of their whole message), because the product name is the rarest and most telling word. When a vertical is obvious, run the query with `--vertical` and, if the top results still look off, run an empty query with the same `--vertical` to see the whole vertical; at eight to sixteen listings each, reading the list is cheaper than guessing.
+   Two habits make this reliable. Put the named product first if the user gave one ("calendly team booking" beats a paraphrase of their whole message), because the product name is the rarest and most telling word. When a vertical is obvious, run the query with `--vertical` and, if the top results still look off, run an empty query with the same `--vertical` to see the whole vertical; at two to sixteen listings each, reading the list is cheaper than guessing.
 
 2. For the top one to three, fetch the full record with `--detail <slug>`. That is where reach (the jobs an agent can and cannot do), the customization surface (env vars, config files, prompt files), editions with prices, gotchas, accounts, confidence and open questions live. Read reach before promising what an agent can do; the unreachable jobs are listed on purpose.
 
@@ -43,7 +43,7 @@ If the client speaks MCP instead, `scripts/mcp.mjs` in this folder is the same s
 
 ## Without Node
 
-Fetch `https://mothermachine.ai/index/search.json` (about 130 KB), match the user's words against `name`, `alternativeTo`, `tagline` and `useWhen`, then fetch `https://mothermachine.ai/apps/<slug>.json` for the finalists. `https://mothermachine.ai/llms.txt` explains the vocabulary in one page.
+Fetch `https://mothermachine.ai/index/search.json` (about 145 KB), match the user's words against `name`, `alternativeTo`, `tagline` and `useWhen`, then fetch `https://mothermachine.ai/apps/<slug>.json` for the finalists. `https://mothermachine.ai/llms.txt` explains the vocabulary in one page.
 
 ## Examples
 
