@@ -15,7 +15,7 @@ A short, decisive answer, not a catalog. Usually one to three candidates, each w
 - Name, one line on what it does, and the page link.
 - Which capability it is. Adaptable comes with an effort grade and a count of things to edit. Operable comes with an operability level, the interface kind, and reach coverage. State both when both apply.
 - How to get it: the clone, install, pull, or deploy command from its editions.
-- License, and whether a paid edition exists. Every listing has a free or open edition by the site's rules; `paid: true` means a priced edition also exists, often with the team features. Say which features sit behind it when the record does.
+- License, and whether a paid edition exists. Every listing has a free or open edition by the site's rules; `paid: true` means a priced edition also exists, often with the team features. An edition with `price: null` has no recorded price, so do not call it free unless it is open and downloadable. Say which features sit behind it when the record does.
 - Gotchas and accounts needed, before the user starts. A copyleft license, an unsigned Mac build, or a Twilio account is exactly what they want to know now rather than an hour in.
 - Where the record is uncertain, say so. Every classified field carries confidence; `openQuestions` lists what the curator could not settle.
 
