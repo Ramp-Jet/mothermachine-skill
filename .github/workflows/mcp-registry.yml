@@ -1,0 +1,53 @@
+name: MCP Registry
+# Copied into Ramp-Jet/mothermachine-skill by tools/mirror-skill.mjs. Do not edit it there.
+# Lists server.json's version on the MCP Registry once npm has that version (adr/0017).
+# The daily run catches a version npm got after the push, including a hand publish.
+# The registry trusts the GitHub OIDC token's repository_owner, so no token is stored anywhere.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: mcp-registry
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.7
+      MCP_PUBLISHER_SHA256: 00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check npm and the registry
+        id: version
+        run: |
+          name=$(node -p "require('./server.json').name")
+          version=$(node -p "require('./server.json').version")
+          publish=false
+          if npm view "mothermachine@$version" version 2>/dev/null | grep -q .; then
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}' "https://registry.modelcontextprotocol.io/v0.1/servers/${name/\//%2F}/versions/$version")
+            case "$status" in
+              200) ;;
+              404) publish=true ;;
+              *) echo "::error::The registry answered $status"; exit 1 ;;
+            esac
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+      - name: Download mcp-publisher
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          archive=mcp-publisher_linux_amd64.tar.gz
+          curl --fail --location --silent --show-error --output "$archive" "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/$archive"
+          echo "$MCP_PUBLISHER_SHA256  $archive" | sha256sum --check
+          tar xzf "$archive" mcp-publisher
+      - name: Log in to the registry
+        if: steps.version.outputs.publish == 'true'
+        run: ./mcp-publisher login github-oidc
+      - name: Publish to the registry
+        if: steps.version.outputs.publish == 'true'
+        run: ./mcp-publisher publish

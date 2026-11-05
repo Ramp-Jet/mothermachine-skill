@@ -47,7 +47,8 @@ claude mcp add mothermachine -- node ~/.claude/skills/mothermachine/scripts/mcp.
 - `scripts/mcp.mjs`: the MCP server over the same search.
 - `scripts/cli.mjs` and `package.json`: the `mothermachine` command on npm, which runs the two scripts above.
 - `scripts/*.test.mjs`: tests, run with `node --test`.
-- `.github/workflows/release.yml`: publishes a new version to npm.
+- `server.json`: the listing on the MCP Registry.
+- `.github/workflows/`: `release.yml` publishes a new version to npm, and `mcp-registry.yml` lists it on the MCP Registry.
 - `LICENSE`: MIT, the same as the source repository.
 
 Everything reads the live site, so an installed copy never goes stale on data; reinstall to pick up changes to the scripts.
