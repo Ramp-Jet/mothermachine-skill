@@ -34,6 +34,8 @@ Then `/mothermachine <what you need>` searches the directory from the chat.
 claude mcp add mothermachine -- npx -y mothermachine mcp
 ```
 
+The [official MCP Registry](https://registry.modelcontextprotocol.io/) lists it as `io.github.Ramp-Jet/mothermachine`.
+
 If you installed the skill, the server is already on disk:
 
 ```sh
