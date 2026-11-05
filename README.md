@@ -42,6 +42,10 @@ If you installed the skill, the server is already on disk:
 claude mcp add mothermachine -- node ~/.claude/skills/mothermachine/scripts/mcp.mjs
 ```
 
+## What it fetches
+
+The skill and the MCP server read the search index and other public JSON files from https://mothermachine.ai. The search runs on your machine, so your search words are not sent. Those requests reach the site's host like any page visit, which the [privacy page](https://mothermachine.ai/privacy.html) covers. Neither one writes files or sends telemetry. They run only the scripts in this repository, with Node 18 or later.
+
 ## What is here
 
 - `SKILL.md`: the skill, read by the agent.
@@ -49,6 +53,7 @@ claude mcp add mothermachine -- node ~/.claude/skills/mothermachine/scripts/mcp.
 - `scripts/mcp.mjs`: the MCP server over the same search.
 - `scripts/cli.mjs` and `package.json`: the `mothermachine` command on npm, which runs the two scripts above.
 - `scripts/*.test.mjs`: tests, run with `node --test`.
+- `.claude-plugin/plugin.json` and `.mcp.json`: the Claude plugin, which is this whole folder.
 - `server.json`: the listing on the MCP Registry.
 - `.github/workflows/`: `release.yml` publishes a new version to npm, and `mcp-registry.yml` lists it on the MCP Registry.
 - `LICENSE`: MIT, the same as the source repository.

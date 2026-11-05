@@ -1,0 +1,23 @@
+{
+  "name": "mothermachine",
+  "version": "1.1.1",
+  "description": "Search mothermachine.ai, a directory of software an agent can adapt or operate, from a skill or an MCP server.",
+  "author": {
+    "name": "Rampjet",
+    "url": "https://mothermachine.ai"
+  },
+  "homepage": "https://mothermachine.ai/agents.html",
+  "repository": "https://github.com/Ramp-Jet/mothermachine-skill",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "agent-skill",
+    "open-source-alternatives",
+    "self-hosted",
+    "directory"
+  ],
+  "documentationUrl": "https://mothermachine.ai/agents.html",
+  "supportUrl": "https://mothermachine.ai/agents.html",
+  "privacyPolicyUrl": "https://mothermachine.ai/privacy.html"
+}
