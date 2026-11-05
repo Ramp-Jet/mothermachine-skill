@@ -2,19 +2,19 @@
 // MCP server for the mothermachine directory, over stdio. No dependencies; Node 18+.
 //
 //   node mcp.mjs                     serve; a client such as Claude Code or Claude Desktop spawns it
-//   MOTHERMACHINE_BASE=http://...    read a local copy of the site instead of https://mothermachine.ai
+//   node mcp.mjs --base http://...   read a local copy of the site instead of https://mothermachine.ai
 //
 // Three read-only tools: search, listing, vocab. They are the skill's search.mjs behind a protocol, with the
 // same rank() over the same index/search.json, so the skill and the server cannot disagree (adr/0009).
 // The protocol is the MCP stdio transport: one JSON-RPC 2.0 message per line, requests answered by id,
 // notifications ignored. Written out here rather than taken from an SDK so that one file installs from the site.
 import { createInterface } from "node:readline";
-import { stdin, stdout, env, argv } from "node:process";
+import { stdin, stdout, argv } from "node:process";
 import { rank, get, loadIndex, detailOf, alternativesPages, hint } from "./search.mjs";
 
 const VERSION = "1.1.1";
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const base = (env.MOTHERMACHINE_BASE || (argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "") || "https://mothermachine.ai").replace(/\/$/, "");
+const base = ((argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "") || "https://mothermachine.ai").replace(/\/$/, "");
 
 const TOOLS = [
   { name: "search", description: "Search mothermachine.ai, a directory of software an agent can adapt (pull the source and configure it) or operate (drive it through an MCP server, API, CLI, or config). Give the user's need in their own words, or the commercial product they want to replace (\"replace Calendly\"). Returns ranked listings with the repo, how much is yours to change, how an agent reaches it, the license, and links to the page and JSON record. Empty query with a filter lists a whole slice.",

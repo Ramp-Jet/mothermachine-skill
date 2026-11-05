@@ -32,7 +32,7 @@ function serve() {
 }
 // One server process; send JSON-RPC lines, collect replies by id.
 function client(base) {
-  const p = spawn(process.execPath, [path.join(here, "mcp.mjs")], { env: { ...process.env, MOTHERMACHINE_BASE: base }, stdio: ["pipe", "pipe", "pipe"] });
+  const p = spawn(process.execPath, [path.join(here, "mcp.mjs"), "--base", base], { stdio: ["pipe", "pipe", "pipe"] });
   let buf = "", stderr = ""; const waiting = new Map(); let nextId = 1;
   p.stdout.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (!line.trim()) continue; const m = JSON.parse(line); waiting.get(m.id)?.(m); waiting.delete(m.id); } });
   p.stderr.on("data", d => { stderr += d; });
@@ -117,7 +117,7 @@ test("a reply still arrives when the client closes stdin right after sending the
     const { execFile } = await import("node:child_process");
     const input = [{ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "x", version: "0" } } },
       { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "search", arguments: { query: "calendly" } } }].map(m => JSON.stringify(m)).join("\n") + "\n";
-    const out = await new Promise((resolve, reject) => { const p = execFile(process.execPath, [path.join(here, "mcp.mjs")], { env: { ...process.env, MOTHERMACHINE_BASE: site.base }, timeout: 15000 }, (err, stdout, stderr) => err ? reject(new Error(stderr || err.message)) : resolve(stdout)); p.stdin.end(input); });
+    const out = await new Promise((resolve, reject) => { const p = execFile(process.execPath, [path.join(here, "mcp.mjs"), "--base", site.base], { timeout: 15000 }, (err, stdout, stderr) => err ? reject(new Error(stderr || err.message)) : resolve(stdout)); p.stdin.end(input); });
     const ids = out.trim().split("\n").map(l => JSON.parse(l).id);
     assert.deepEqual(ids, [1, 2], `got replies ${ids}`);
   } finally { site.close(); }

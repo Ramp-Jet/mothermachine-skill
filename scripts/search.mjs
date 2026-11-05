@@ -11,14 +11,14 @@
 //
 // Reads index/search.json (one fetch, every listing with its useWhen and alternativeTo text). Falls back to
 // index/all.json on older deployments. --base overrides the site, e.g. a local checkout served on a port.
-import { argv as ARGV, exit, env } from "node:process";
+import { argv as ARGV, exit } from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const args = ARGV.slice(2);
 const BOOL = new Set(["json", "operable", "adaptable", "vocab", "open"]);
 const flag = n => { const i = args.indexOf(`--${n}`); return i >= 0 ? (args[i + 1] && !args[i + 1].startsWith("--") && !BOOL.has(n) ? args[i + 1] : true) : null; };
-const base = (flag("base") || env.MOTHERMACHINE_BASE || "https://mothermachine.ai").replace(/\/$/, "");
+const base = (flag("base") || "https://mothermachine.ai").replace(/\/$/, "");
 const query = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--") && !BOOL.has(args[i - 1].slice(2)))).join(" ").trim();
 
 const STOP = new Set(("a an the for to of and or with my our your i we is are be that this it in on at by from as app apps tool tools software something anything " +

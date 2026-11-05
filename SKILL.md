@@ -42,7 +42,7 @@ If nothing fits, say that plainly and suggest the nearest vertical, or the Candi
 
 Rank by fit to the need first. Within equal fit, prefer less effort (`config-only` over `fork-and-modify`) and higher reach coverage, because the site's promise is that most of the work is already done.
 
-If the client speaks MCP instead, `scripts/mcp.mjs` in this folder is the same search as a stdio server (tools: search, listing, vocab) with the same filters. The script prints links built from the site address. If you ran it against a local copy with `MOTHERMACHINE_BASE` set, rewrite the links to `https://mothermachine.ai/` before the user sees them.
+If the client speaks MCP instead, `scripts/mcp.mjs` in this folder is the same search as a stdio server (tools: search, listing, vocab) with the same filters. The script prints links built from the site address. If you ran it against a local copy with `--base`, rewrite the links to `https://mothermachine.ai/` before the user sees them.
 
 ## Without Node
 
