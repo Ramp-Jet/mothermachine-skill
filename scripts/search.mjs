@@ -214,4 +214,5 @@ async function main() {
 // Run main() only when this file is the command, not when imported by the tests. Compare real paths:
 // a skills folder reached through a symlink (macOS /var is one) would otherwise never match.
 const same = (a, b) => { try { return realpathSync(a) === realpathSync(b); } catch { return false; } };
-if (ARGV[1] && same(ARGV[1], fileURLToPath(import.meta.url))) main().catch(e => { console.error(`mothermachine search failed: ${e.message}`); exit(1); });
+export const cli = () => main().catch(e => { console.error(`mothermachine search failed: ${e.message}`); exit(1); });
+if (ARGV[1] && same(ARGV[1], fileURLToPath(import.meta.url))) cli();
