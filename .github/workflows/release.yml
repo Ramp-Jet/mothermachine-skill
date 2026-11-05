@@ -1,0 +1,40 @@
+name: Release
+# Copied into Ramp-Jet/mothermachine-skill by tools/mirror-skill.mjs. Do not edit it there.
+# Publishes package.json's version to npm when npm does not have it yet, so raising the
+# version in the source repository is the release (adr/0017). npm trusts this file by its
+# name, release.yml, through trusted publishing, so no token is stored anywhere.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Check the version on npm
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if npm view "mothermachine@$version" version 2>/dev/null | grep -q .; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run the tests
+        if: steps.version.outputs.publish == 'true'
+        run: node --test
+      - name: Publish to npm
+        if: steps.version.outputs.publish == 'true'
+        run: npm publish
