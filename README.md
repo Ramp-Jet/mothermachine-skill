@@ -1,6 +1,16 @@
 # mothermachine skill
 
-Search [mothermachine.ai](https://mothermachine.ai), a directory of software an agent can adapt or operate, from a coding agent or an MCP client. This repository is generated from the private source repository on every change to the skill; do not edit it here. Issues and candidate listings go to the site: https://mothermachine.ai/agents.html
+Search [mothermachine.ai](https://mothermachine.ai), a directory of software an agent can adapt or operate, from a coding agent or an MCP client. This repository is generated from the private source repository on every change to the skill; do not edit it here. More for agents is on the site: https://mothermachine.ai/agents.html
+
+## Try it
+
+Ask your agent in your own words:
+
+- "Is there an open source Calendly alternative I can self-host?"
+- "Before I build this, what's out there for invoicing for a freelancer?"
+- "Find a CRM my coding agent can drive over MCP."
+
+Each answer gives the repo, the install command, how much is yours to change, and what an agent can and can't do with it.
 
 ## Run it
 
@@ -45,6 +55,17 @@ claude mcp add mothermachine -- node ~/.claude/skills/mothermachine/scripts/mcp.
 ## What it fetches
 
 The skill and the MCP server read the search index and other public JSON files from https://mothermachine.ai. The search runs on your machine, so your search words are not sent. Those requests reach the site's host like any page visit, which the [privacy page](https://mothermachine.ai/privacy.html) covers. Neither one writes files or sends telemetry. They run only the scripts in this repository, with Node 18 or later.
+
+## If something goes wrong
+
+- `mothermachine search failed: fetch failed` means the site could not be reached. Check that your machine or sandbox allows network access to mothermachine.ai.
+- A script that will not start usually means an older Node. Run `node --version`; it needs Node 18 or later.
+- No matches? Try fewer words, or the name of the product you want to replace. `--vocab` lists every filter value.
+- MCP tools missing? Restart the client, then check that it lists the `mothermachine` server.
+
+## Support and security
+
+Report a problem at https://github.com/Ramp-Jet/mothermachine-skill/issues. Send security reports privately to privacy@rampjet.ai.
 
 ## What is here
 
