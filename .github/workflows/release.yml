@@ -37,4 +37,5 @@ jobs:
         run: node --test
       - name: Publish to npm
         if: steps.version.outputs.publish == 'true'
-        run: npm publish
+        # At the default level, a refused trusted publisher login shows only as a 404 on the upload.
+        run: npm publish --loglevel verbose
