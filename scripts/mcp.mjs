@@ -12,7 +12,7 @@ import { createInterface } from "node:readline";
 import { stdin, stdout, argv } from "node:process";
 import { rank, get, loadIndex, detailOf, alternativesPages, hint } from "./search.mjs";
 
-const VERSION = "1.1.1";
+const VERSION = "1.1.2";
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const base = ((argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "") || "https://mothermachine.ai").replace(/\/$/, "");
 
