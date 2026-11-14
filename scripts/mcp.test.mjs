@@ -9,25 +9,29 @@ const L = {
   "cal--diy": { slug: "cal--diy", name: "Cal.diy", tagline: "Self-hosted booking pages with API v2.", useWhen: ["I want a booking page I host"], alternativeTo: ["Calendly"], accounts: [], gotchas: ["AGPL"], vertical: "scheduling-staffing", shape: "business-app", capabilities: ["adaptable", "operable"], effort: "config-only", editCount: 4, operability: "official", coverage: "complete", interfaceKind: "api", license: "MIT", paid: false, url: "apps/cal--diy.html" },
   "acme--notes": { slug: "acme--notes", name: "Acme Notes", tagline: "Notes with an MCP server.", useWhen: ["I want notes my agent can read"], alternativeTo: ["Notion"], accounts: [], gotchas: [], vertical: "notes-knowledge", shape: "business-app", capabilities: ["operable"], effort: null, editCount: null, operability: "native", coverage: "complete", interfaceKind: "mcp", license: "Apache-2.0", paid: false, url: "apps/acme--notes.html" },
 };
-function fixture() {
+const STACKS = [{ slug: "barbershop", name: "Run a barbershop with your agent", page: "stacks/barbershop.html", markdown: "stacks/barbershop.md", checkedOn: "2026-11-14",
+  roles: [{ job: "Bookings", listing: "cal--diy", name: "Cal.diy", url: "apps/cal--diy.html" }], handoffs: [] }];
+function fixture({ stacks = true } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mm-mcp-"));
   fs.mkdirSync(path.join(root, "index")); fs.mkdirSync(path.join(root, "apps"));
   fs.writeFileSync(path.join(root, "index/search.json"), JSON.stringify({ version: 1, count: 2, listings: Object.values(L) }));
   fs.writeFileSync(path.join(root, "index/alternatives.json"), JSON.stringify({ products: [{ product: "Calendly", page: "alternatives/calendly.html" }, { product: "Notion", page: null }] }));
   fs.writeFileSync(path.join(root, "index/vocab.json"), JSON.stringify({ fields: [{ name: "vertical", values: [{ value: "scheduling-staffing", count: 1 }, { value: "notes-knowledge", count: 1 }] }] }));
+  if (stacks) fs.writeFileSync(path.join(root, "index/stacks.json"), JSON.stringify({ version: "2", count: STACKS.length, stacks: STACKS }));
   for (const [slug, l] of Object.entries(L)) fs.writeFileSync(path.join(root, `apps/${slug}.json`), JSON.stringify({ listing: { ...l, description: `${l.name} in full.`, repos: [{ url: `https://github.com/${slug.replace("--", "/")}`, license: l.license, stars: 10, lastCommit: "2026-09-01" }], editions: [], customization: l.effort ? { effort: l.effort, editCount: l.editCount, summary: "Edit .env.", envVars: ["DATABASE_URL"] } : null, interface: { kind: l.interfaceKind }, reach: [], confidence: {}, openQuestions: [] } }));
   return root;
 }
 const TYPES = { ".json": "application/json", ".html": "text/html", ".txt": "text/plain" };
-function serve() {
-  const root = fixture();
+function serve(opts) {
+  const root = fixture(opts); const seen = [];
   return new Promise(resolve => {
     const s = http.createServer((req, res) => {
+      seen.push(req.url.split("?")[0]);
       const f = path.join(root, decodeURIComponent(req.url.split("?")[0]));
       if (!f.startsWith(root) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end("no"); }
       res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" }); res.end(fs.readFileSync(f));
     });
-    s.listen(0, "127.0.0.1", () => resolve({ base: `http://127.0.0.1:${s.address().port}`, close: () => s.close() }));
+    s.listen(0, "127.0.0.1", () => resolve({ base: `http://127.0.0.1:${s.address().port}`, seen, close: () => s.close() }));
   });
 }
 // One server process; send JSON-RPC lines, collect replies by id.
@@ -88,6 +92,34 @@ test("search takes interface and open as filters, links the compare page, and sa
     assert.match(r.hint, /Thin result/);
     const n = text(await c.call("tools/call", { name: "search", arguments: { query: "notion" } }));
     assert.deepEqual(n.compare, [], "a product without a page gets no link");
+  } finally { c.kill(); site.close(); }
+});
+
+test("search returns the stack for a kind of business, and fetches stacks only for one", async () => {
+  const site = await serve(); const c = client(site.base);
+  try {
+    await c.call("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } });
+    const tool = (await c.call("tools/list")).result.tools.find(t => t.name === "search");
+    assert.match(tool.description, /kind of business/, "the tool tells the client it can ask by business");
+    const r = text(await c.call("tools/call", { name: "search", arguments: { query: "software for my barbershop" } }));
+    assert.deepEqual(r.stacks, [{ slug: "barbershop", name: "Run a barbershop with your agent", page: `${site.base}/stacks/barbershop.html`, markdown: `${site.base}/stacks/barbershop.md`, roles: [{ job: "Bookings", listing: "cal--diy", name: "Cal.diy" }] }]);
+    assert.equal(r.hint, undefined, "a stack is an answer, so no thin-result hint");
+    const m = text(await c.call("tools/call", { name: "search", arguments: { query: "software for my barbershop", interface: "mcp" } }));
+    assert.deepEqual(m.stacks[0].roles, [{ job: "Bookings", listing: "cal--diy", name: "Cal.diy", fits: false }], "Cal.diy is driven over an API, not MCP");
+    const before = site.seen.length;
+    const p = text(await c.call("tools/call", { name: "search", arguments: { query: "replace calendly" } }));
+    assert.deepEqual(p.stacks, []);
+    assert.ok(!site.seen.slice(before).includes("/index/stacks.json"), "no business named, no stacks fetch");
+  } finally { c.kill(); site.close(); }
+});
+
+test("search still answers when the site has no stacks index", async () => {
+  const site = await serve({ stacks: false }); const c = client(site.base);
+  try {
+    await c.call("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } });
+    const r = text(await c.call("tools/call", { name: "search", arguments: { query: "barbershop booking page" } }));
+    assert.deepEqual(r.stacks, []); assert.equal(r.results[0].slug, "cal--diy");
+    assert.ok(site.seen.includes("/index/stacks.json"), "it tried");
   } finally { c.kill(); site.close(); }
 });
 

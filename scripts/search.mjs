@@ -8,9 +8,10 @@
 //   node search.mjs "" --vertical scheduling-staffing                 everything in one vertical
 //   node search.mjs --detail usememos--memos                      the full record, trimmed to what matters
 //   node search.mjs --vocab                                       fields, values and counts
+//   node search.mjs "barbershop software"                         the stack for that kind of business, then listings
 //
 // Reads index/search.json (one fetch, every listing with its useWhen and alternativeTo text). Falls back to
-// index/all.json on older deployments. --base overrides the site, e.g. a local checkout served on a port.
+// index/all.json on older deployments. A query that names a kind of business also reads index/stacks.json. --base overrides the site, e.g. a local checkout served on a port.
 import { argv as ARGV, exit } from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -150,6 +151,36 @@ export function alternativesPages(results, q, products) {
   return (products || []).filter(p => p.page && named.has(p.product)).map(p => ({ product: p.product, page: p.page }));
 }
 
+// Words that name a kind of business. Only a query with one of them fetches index/stacks.json, so every word of
+// every stack's slug must be here; tools/build-site.test.mjs fails when a new stack is missing.
+export const BUSINESS_WORDS = ("barbershop freelancer salon spa bakery cafe coffeeshop restaurant brewery florist gym studio " +
+  "clinic dentist dental physio therapist vet photographer tutor consultant consultancy agency contractor plumber electrician " +
+  "cleaner landscaper mechanic garage realtor lawyer accountant").split(" ");
+// The spellings of one word a person might use for another: "barbers" for barbershop, "freelancing" for freelancer.
+// Two words agree when a form of one is a form of the other, or when one starts with the other and the shorter has
+// five letters or more. "barb" is too short to mean barbershop.
+const forms = w => new Set([w, w.replace(/([^s])s$/, "$1"), stem(w)]);
+const agree = (a, b) => { for (const x of forms(a)) for (const y of forms(b)) { const [s, l] = x.length <= y.length ? [x, y] : [y, x]; if (s === l || (s.length >= 5 && l.startsWith(s))) return true; } return false; };
+export const namesBusiness = q => words(q).some(w => BUSINESS_WORDS.some(b => agree(w, b)));
+// The stacks a query names. Like a compare page, the whole slug must be in the query: a generic word in a stack's
+// title ("practice" in "a freelance practice") must not find it for "dental practice software".
+export function stacksFor(q, stacks) {
+  const qw = words(q);
+  return (stacks || []).filter(s => { const sw = String(s.slug || "").split("-").filter(Boolean); return sw.length && sw.every(k => qw.some(w => agree(w, k))); });
+}
+// A stack as the answer carries it: its page, its Markdown twin, and the listing for each job. fit is the set of slugs
+// that pass the search's filters, or null without filters. The stack still answers the business, so a job whose listing
+// falls outside the filters is marked, not dropped: the user learns which part does not meet what they asked for.
+export const stackOf = (s, base, fit = null) => ({ slug: s.slug, name: s.name, page: `${base}/${s.page}`, markdown: `${base}/${s.markdown}`,
+  roles: (s.roles || []).map(r => ({ job: r.job, listing: r.listing, name: r.name, ...(fit ? { fits: fit.has(r.listing) } : {}) })) });
+// The slugs that pass the filters, or null when none is set.
+export const fitting = (listings, filters) => Object.values(filters).some(Boolean) ? new Set(rank(listings, "", filters).map(l => l.slug)) : null;
+// One more small fetch, only when the query names a kind of business. An older site has no stacks index; say nothing then.
+export async function stacksFrom(base, q, fit = null) {
+  if (!namesBusiness(q)) return [];
+  try { return stacksFor(q, (await get(base, "index/stacks.json")).stacks).map(s => stackOf(s, base, fit)); } catch { return []; }
+}
+
 export async function get(base, path) {
   const r = await fetch(`${base}/${path}`, { headers: { "accept": "application/json" } });
   if (!r.ok) throw Object.assign(new Error(`${r.status} ${base}/${path}`), { status: r.status });
@@ -183,6 +214,7 @@ export function line(l, base) {
   const agent = l.operability ? `${l.operability}/${l.interfaceKind || "?"}${l.mcpServer && l.interfaceKind !== "mcp" ? "+mcp" : ""}${l.coverage ? ` ${l.coverage}` : ""}` : "–";
   return `${l.slug}\n  ${l.tagline || l.summary}\n  ${caps} · yours: ${yours} · agent: ${agent} · ${licenseText(l)}${l.a2a ? ` · A2A: ${l.a2a}` : ""}${l.paid ? " · paid edition" : ""}${(l.alternativeTo || []).length ? ` · alt to ${l.alternativeTo.join(", ")}` : ""}\n  ${base}/${l.url}  json: ${base}/apps/${l.slug}.json`;
 }
+export const stackLine = s => `Stack: ${s.name}\n  ${s.roles.map(r => `${r.job}: ${r.name}${r.fits === false ? " (outside your filters)" : ""}`).join(" · ")}\n  ${s.page}  md: ${s.markdown}`;
 // What to say when a search finds nothing or little: the vertical the words point at, if any.
 export function hint(q) {
   const v = verticalFor(q);
@@ -204,12 +236,15 @@ async function main() {
   // The compare page is the best single link for a named product. One more small fetch, only when a product was named.
   let compare = [];
   if (res.some(r => r.product)) { try { compare = alternativesPages(res, query, (await get(base, "index/alternatives.json")).products); } catch { compare = []; } }
-  if (flag("json")) { console.log(JSON.stringify({ base, query, filters, count: res.length, compare: compare.map(c => ({ ...c, page: `${base}/${c.page}` })), results: res.map(({ effortRank, ...r }) => r) })); return; }
-  if (!res.length) { console.log(`No matches for "${query}". ${hint(query)}`); return; }
+  const stacks = await stacksFrom(base, query, fitting(listings, filters));
+  if (flag("json")) { console.log(JSON.stringify({ base, query, filters, count: res.length, stacks, compare: compare.map(c => ({ ...c, page: `${base}/${c.page}` })), results: res.map(({ effortRank, ...r }) => r) })); return; }
+  // A stack answers a business better than any one listing, so it comes first, and it stands even when no listing matched.
+  for (const s of stacks) console.log(stackLine(s) + "\n");
+  if (!res.length) { if (!stacks.length) console.log(`No matches for "${query}". ${hint(query)}`); return; }
   console.log(`${res.length} match${res.length === 1 ? "" : "es"} for "${query}" (${idx.count} listings searched)\n`);
   for (const l of res) console.log(line(l, base) + "\n");
   for (const c of compare) console.log(`Compare every ${c.product} alternative: ${base}/${c.page}`);
-  if (all.length < 3 && query) console.log(`Thin result. ${hint(query)}`);
+  if (all.length < 3 && query && !stacks.length) console.log(`Thin result. ${hint(query)}`);
 }
 // Run main() only when this file is the command, not when imported by the tests. Compare real paths:
 // a skills folder reached through a symlink (macOS /var is one) would otherwise never match.

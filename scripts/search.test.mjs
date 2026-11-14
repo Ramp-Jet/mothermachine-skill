@@ -6,7 +6,8 @@ import * as S from "./search.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFile } from "node:child_process";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 const L = [
   { slug: "a--notes", name: "Notely", tagline: "Self-hosted note taking", useWhen: ["I keep notes in markdown"], alternativeTo: ["Notion"], vertical: "notes-knowledge", capabilities: ["adaptable", "operable"], effort: "config-only", operability: "official", paid: false },
@@ -167,4 +168,72 @@ test("a short word in a product name does not cost it the whole-name match", () 
   const F = [{ slug: "f--desk", name: "Frappe Helpdesk", tagline: "Tickets", useWhen: [], alternativeTo: [], vertical: "support-bookkeeping", capabilities: ["adaptable"], effort: "config-only", effortRank: 0 },
     { slug: "f--hr", name: "Frappe HR", tagline: "Leave and payroll", useWhen: [], alternativeTo: [], vertical: "smb-ops-crm", capabilities: ["adaptable"], effort: "config-only", effortRank: 0 }];
   assert.equal(rank(F, "Frappe HR")[0].slug, "f--hr");
+});
+
+// ---- stacks ----------------------------------------------------------------------------
+const STACKS = [
+  { slug: "barbershop", name: "Run a barbershop with your agent", page: "stacks/barbershop.html", markdown: "stacks/barbershop.md",
+    roles: [{ job: "Bookings", listing: "alextselegidis--easyappointments", name: "Easy!Appointments", url: "apps/alextselegidis--easyappointments.html" }], handoffs: [] },
+  { slug: "freelancer", name: "Run a freelance practice with your agent", page: "stacks/freelancer.html", markdown: "stacks/freelancer.md",
+    roles: [{ job: "Invoices and payments", listing: "invoiceninja--invoiceninja", name: "Invoice Ninja", url: "apps/invoiceninja--invoiceninja.html" }], handoffs: [] },
+];
+test("a query that names a kind of business finds its stack", () => {
+  const slugs = q => S.stacksFor(q, STACKS).map(s => s.slug);
+  for (const q of ["barbershop software", "software for my barbershop", "apps for barbers", "Barbershops"]) assert.deepEqual(slugs(q), ["barbershop"], q);
+  for (const q of ["run a freelance practice", "freelancer invoicing", "freelancing tools"]) assert.deepEqual(slugs(q), ["freelancer"], q);
+});
+test("a generic word in a stack's name does not find it", () => {
+  for (const q of ["dental practice software", "online shop", "notes for my team", "run my business", "barb"]) assert.deepEqual(S.stacksFor(q, STACKS), [], q);
+});
+test("only a query that names a kind of business is worth fetching the stacks for", () => {
+  for (const q of ["barbershop software", "freelancer invoicing", "hair salon booking"]) assert.equal(S.namesBusiness(q), true, q);
+  for (const q of ["replace calendly", "open source notion", "invoice my clients", ""]) assert.equal(S.namesBusiness(q), false, q);
+});
+test("a stack comes back as its page, its Markdown twin and the listing for each job", () => {
+  assert.deepEqual(S.stackOf(STACKS[0], "https://x"), { slug: "barbershop", name: "Run a barbershop with your agent", page: "https://x/stacks/barbershop.html", markdown: "https://x/stacks/barbershop.md",
+    roles: [{ job: "Bookings", listing: "alextselegidis--easyappointments", name: "Easy!Appointments" }] });
+});
+
+test("with filters set, a stack marks each job whose listing falls outside them", () => {
+  const st = S.stackOf(STACKS[0], "https://x", new Set(["other--slug"]));
+  assert.deepEqual(st.roles, [{ job: "Bookings", listing: "alextselegidis--easyappointments", name: "Easy!Appointments", fits: false }]);
+  assert.equal(S.stackOf(STACKS[0], "https://x", new Set(["alextselegidis--easyappointments"])).roles[0].fits, true);
+  assert.match(S.stackLine(st), /Bookings: Easy!Appointments \(outside your filters\)/);
+  assert.doesNotMatch(S.stackLine(S.stackOf(STACKS[0], "https://x")), /outside/, "no filters, no marks");
+});
+
+// The command run against a local copy of a site, recording what it fetched.
+function site(files) {
+  const seen = [];
+  const s = http.createServer((req, res) => {
+    const p = req.url.split("?")[0].slice(1); seen.push(p);
+    if (!(p in files)) { res.writeHead(404); return res.end("no"); }
+    res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(files[p]));
+  });
+  return new Promise(resolve => s.listen(0, "127.0.0.1", () => resolve({ base: `http://127.0.0.1:${s.address().port}`, seen, close: () => s.close() })));
+}
+const here = path.dirname(fileURLToPath(import.meta.url));
+const runCli = (base, ...a) => new Promise((resolve, reject) => execFile(process.execPath, [path.join(here, "search.mjs"), ...a, "--base", base], { timeout: 20000 }, (err, stdout, stderr) => err ? reject(new Error(stderr || err.message)) : resolve(stdout)));
+test("the command prints the stack link for a business, even when no single listing matches", async () => {
+  const s = await site({ "index/search.json": { count: L.length, listings: L.map(l => ({ ...l, url: `apps/${l.slug}.html` })) }, "index/stacks.json": { stacks: STACKS } });
+  try {
+    const out = await runCli(s.base, "barbershop software");
+    assert.match(out, new RegExp(`${s.base}/stacks/barbershop\\.html`));
+    assert.match(out, /Run a barbershop with your agent/);
+    assert.match(out, /Bookings: Easy!Appointments/);
+    const json = JSON.parse(await runCli(s.base, "barbershop software", "--json"));
+    assert.deepEqual(json.stacks.map(x => x.page), [`${s.base}/stacks/barbershop.html`]);
+    const before = s.seen.length;
+    const plain = JSON.parse(await runCli(s.base, "quickbooks replacement", "--json"));
+    assert.deepEqual(plain.stacks, []); assert.equal(plain.results[0].slug, "b--books");
+    assert.ok(!s.seen.slice(before).includes("index/stacks.json"), "a query that names no business does not fetch the stacks");
+  } finally { s.close(); }
+});
+test("the command still answers when the site has no stacks index", async () => {
+  const s = await site({ "index/search.json": { count: L.length, listings: L.map(l => ({ ...l, url: `apps/${l.slug}.html` })) } });
+  try {
+    const json = JSON.parse(await runCli(s.base, "freelancer invoicing", "--json"));
+    assert.deepEqual(json.stacks, []); assert.equal(json.results[0].slug, "b--books");
+    assert.ok(s.seen.includes("index/stacks.json"), "it tried");
+  } finally { s.close(); }
 });

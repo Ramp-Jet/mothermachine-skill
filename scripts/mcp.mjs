@@ -10,14 +10,14 @@
 // notifications ignored. Written out here rather than taken from an SDK so that one file installs from the site.
 import { createInterface } from "node:readline";
 import { stdin, stdout, argv } from "node:process";
-import { rank, get, loadIndex, detailOf, alternativesPages, hint } from "./search.mjs";
+import { rank, get, loadIndex, detailOf, alternativesPages, hint, stacksFrom, fitting } from "./search.mjs";
 
-const VERSION = "1.1.2";
+const VERSION = "1.2.0";
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const base = ((argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "") || "https://mothermachine.ai").replace(/\/$/, "");
 
 const TOOLS = [
-  { name: "search", description: "Search mothermachine.ai, a directory of software an agent can adapt (pull the source and configure it) or operate (drive it through an MCP server, API, CLI, or config). Give the user's need in their own words, or the commercial product they want to replace (\"replace Calendly\"). Returns ranked listings with the repo, how much is yours to change, how an agent reaches it, the license, and links to the page and JSON record. Empty query with a filter lists a whole slice.",
+  { name: "search", description: "Search mothermachine.ai, a directory of software an agent can adapt (pull the source and configure it) or operate (drive it through an MCP server, API, CLI, or config). Give the user's need in their own words, the commercial product they want to replace (\"replace Calendly\"), or the kind of business they run (\"barbershop software\"). Returns ranked listings with the repo, how much is yours to change, how an agent reaches it, the license, and links to the page and JSON record. A query that names a kind of business also returns its stack: the page that names the listing for each job that business needs and how the apps hand work to each other. With a filter set, each of its jobs says whether its listing fits the filter. Empty query with a filter lists a whole slice.",
     inputSchema: { type: "object", properties: {
       query: { type: "string", description: "The need or product name, in plain words. May be empty when a filter is set." },
       vertical: { type: "string", description: "Restrict to one vertical; vocab lists the values." },
@@ -51,8 +51,9 @@ async function run(name, a = {}) {
     // The compare page for a named product, when the site has one. One more small fetch, only on a product hit.
     let compare = [];
     if (results.some(r => r.product)) { try { compare = alternativesPages(results, query, (await get(base, "index/alternatives.json")).products).map(c => ({ ...c, page: `${base}/${c.page}` })); } catch { compare = []; } }
-    return { base, query, filters, searched: idx.count, count: results.length, compare, results,
-      ...(all.length < 3 && query ? { hint: `${all.length ? "Thin result. " : "No matches. "}${hint(query)}` } : {}) };
+    const stacks = await stacksFrom(base, query, fitting(idx.listings, filters));
+    return { base, query, filters, searched: idx.count, count: results.length, stacks, compare, results,
+      ...(all.length < 3 && query && !stacks.length ? { hint: `${all.length ? "Thin result. " : "No matches. "}${hint(query)}` } : {}) };
   }
   if (name === "listing") {
     if (!SLUG.test(String(a.slug || ""))) throw new Error("slug must be owner--name, letters, digits, dots, dashes and underscores only");
@@ -70,7 +71,7 @@ async function handle(msg) {
   const { id, method, params = {} } = msg;
   if (id === undefined) return; // notification: nothing to answer
   try {
-    if (method === "initialize") return reply(id, { protocolVersion: PROTOCOLS.includes(params.protocolVersion) ? params.protocolVersion : PROTOCOLS[0], capabilities: { tools: {} }, serverInfo: { name: "mothermachine", version: VERSION }, instructions: `Directory of software an agent can adapt or operate, read from ${base}. Use search with the user's own words or the product to replace, then listing for the one or two that fit. Pass interface: "mcp" when the user needs MCP and open: true when they say open source; the words alone do not filter. A listing's verdict says whether the curator verified the record; most are unverified.` });
+    if (method === "initialize") return reply(id, { protocolVersion: PROTOCOLS.includes(params.protocolVersion) ? params.protocolVersion : PROTOCOLS[0], capabilities: { tools: {} }, serverInfo: { name: "mothermachine", version: VERSION }, instructions: `Directory of software an agent can adapt or operate, read from ${base}. Use search with the user's own words or the product to replace, then listing for the one or two that fit. When search returns a stack, the user named a kind of business: lead with the stack page. Pass interface: "mcp" when the user needs MCP and open: true when they say open source; the words alone do not filter. A listing's verdict says whether the curator verified the record; most are unverified.` });
     if (method === "ping") return reply(id, {});
     if (method === "tools/list") return reply(id, { tools: TOOLS });
     if (method === "tools/call") {
