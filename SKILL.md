@@ -50,7 +50,7 @@ If the client speaks MCP instead, `scripts/mcp.mjs` in this folder is the same s
 
 ## Without Node
 
-Fetch `https://mothermachine.ai/index/search.json` (one file, every listing), match the user's words against `name`, `alternativeTo`, `tagline` and `useWhen`, honor `openSource`, `closedCore`, `interfaceKind` and `mcpServer` for stated constraints, then fetch `https://mothermachine.ai/apps/<slug>.json` for the finalists. When the user names a kind of business, fetch `https://mothermachine.ai/index/stacks.json`; each stack has a `page` and a `markdown` twin. `https://mothermachine.ai/llms.txt` explains the vocabulary in one page and lists the alternatives pages by product, and the stacks.
+Fetch `https://mothermachine.ai/llms.txt` once: it explains the vocabulary and lists every file below with its size. Then fetch `https://mothermachine.ai/index/match/<vertical>.json` for the vertical the need points at (every listing in it, with `name`, `alternativeTo`, `tagline`, `useWhen`, the filter flags, `compare` pages, and the `html`, `json` and `md` addresses of each record), match the user's words against those fields, honor `openSource`, `closedCore`, `interfaceKind` and `mcpServer` for stated constraints, then fetch each finalist's `json` address. Every file in that ladder fits in one fetch of 90,000 characters; `index/search.json`, which the script reads, does not, and a fetch tool that stops early shows only part of it with no sign the rest exists. When the user names a kind of business, fetch `https://mothermachine.ai/index/stacks.json`; each stack has a `page` and a `markdown` twin.
 
 ## Examples
 
