@@ -26,15 +26,21 @@ const STOP = new Set(("a an the for to of and or with my our your i we is are be
   "open source opensource self hosted selfhosted free alternative alternatives like want need looking find agent agents use using can should could would " +
   "every each month week day replacement instead person people team teams set setup up code touching touch seat seats pay paying bonus create through without " +
   "ops small business company option options good best simple easy way thing things one someone able let lets get got run runs host hosting hostable hosted own " +
-  "before there here how does build building built make making place into onto what which where who why already exists exist").split(" "));
+  "before there here how does build building built make making place into onto what which where who why already exists exist " +
+  // Filler verbs: a person says "take bookings", "send invoices", "manage stock", "keep notes", "handle returns". The verb says
+  // nothing about which software; it scored anyway, so "take" alone found a tagline about raw takes and "sending" pulled an HR
+  // suite above a booking tool. The noun beside the verb is the need. "online" is on the same list: every listing is online.
+  "take takes taking took send sends sending sent manage manages managing management handle handles handling keep keeps keeping " +
+  "automate automated automating automatically online").split(" "));
 // Two-letter words (do, is, my) never name a need, so they are not tokens at all.
 const words = s => String(s || "").toLowerCase().replace(/[^a-z0-9+#. -]/g, " ").split(/[\s/,;:()\-]+/).filter(Boolean);
 const tokens = s => words(s).filter(t => t.length > 2 && !STOP.has(t));
 // A light stemmer: strip -ing, -ers, -er, then a plural. "es" comes off only after a sibilant, so "notes" stays "note"
-// and never matches the word "not"; "invoices" becomes "invoice" and still finds "invoicing" by substring.
+// and never matches the word "not"; "invoices" becomes "invoice" and still finds "invoicing" as a prefix.
 const stem = t => t.replace(/(ing|ers|er)$/, "").replace(/(ss|sh|ch|x|z)es$/, "$1").replace(/([^s])s$/, "$1");
 // Interface words describe how, not what. Half the directory mentions them, so they count as a hint, never a subject.
-const HINT = new Set(["api", "rest", "mcp", "cli", "sdk", "server", "docker", "webhook", "webhooks"]);
+// Stemmed like the query tokens they are compared with: "server" arrives as "serv", and unstemmed it scored as a subject.
+const HINT = new Set(["api", "rest", "mcp", "cli", "sdk", "server", "docker", "webhook", "webhooks"].map(t => stem(t)));
 // "make" is a stop word and also a product. A stop word counts as a product only where a person names one: as the whole
 // query, or beside a word for replacing it ("Make alternative", "alternative to Make", "replace Make").
 const REPLACING = new Set(["alternative", "alternatives", "replace", "replacing", "replacement", "instead", "vs", "versus"]);
@@ -52,9 +58,10 @@ const FIELDS = l => [
   [(l.useWhen || []).join(" "), 2], [l.vertical, 2], [l.shape, 1], [(l.accounts || []).join(" "), 1],
   [l.a2a ? "a2a" : "", 3],
 ];
-// A query token hits a field when its stem is a word there, or (five letters or more) when it appears inside a word:
-// "calendly" should find "Calendly-style", "booking" should find "bookings".
-const hit = (t, text, ft) => ft.has(t) || (t.length >= 5 && String(text || "").toLowerCase().includes(t));
+// A query token hits a field when its stem is a word there, or (five letters or more) when one starts with the other:
+// "booking" should find "bookings", and "invoice" should find "invoicing", whose stem "invoic" starts "invoice". It must
+// start the word: "point" inside "appointments" is a different word, and it found a booking tool for "point of sale".
+const hit = (t, text, ft) => ft.has(t) || (t.length >= 5 && (words(text).some(w => w.startsWith(t)) || [...ft].some(s => s.length >= 5 && t.startsWith(s))));
 // A product field keeps its stop words, so that a query naming Make can find the word "Make" there.
 const fieldWords = (text, isProduct) => new Set((isProduct ? words(text) : tokens(text)).map(stem));
 // The words that make up a product's name: its tokens, or the name itself when every word of it is a stop word.
@@ -96,6 +103,7 @@ export function rank(listings, q, filters = {}) {
   // Words that all fell away leave nothing to match. Listing everything would read as an answer, so only a filter,
   // or a query that was empty to begin with, asks for a whole slice.
   if (String(q || "").trim() && !qt.length && !Object.values(filters).some(Boolean)) return [];
+  const qset = new Set(qt);
   const subjects = qt.filter(t => !HINT.has(t)).length;
   // A word is rare when fewer than one listing in twenty carries it (six of the 129 listed in November 2026).
   const rare = Math.max(2, Math.floor(listings.length / 20));
@@ -117,10 +125,17 @@ export function rank(listings, q, filters = {}) {
       // outranks the same word mentioned in passing in a tagline and a use-when line, and between two taglines that
       // both say it, the listing that says it again in its use-when lines edges ahead.
       let best = 0, sum = 0;
+      // A product is named when every word of its name is in the query. One word of a longer name ("invoice" out of
+      // "Invoice Ninja", "management" out of "Jira Service Management") is a strong clue but not a product search: it
+      // scores above a tagline word and below the whole name, so GLPI does not lead a search for Jira.
+      const names = t => [l.name, ...(l.alternativeTo || [])].some(p => { const pt = nameWords(p); return pt.includes(t) && pt.every(x => qset.has(x)); });
       for (const [text, w, isProduct] of FIELDS(l)) {
         const ft = fieldWords(text, isProduct);
         const exact = ft.has(t);
-        if (exact || (!isProduct && hit(t, text, ft))) { const v = HINT.has(t) ? 1 : w; sum += v; best = Math.max(best, v); if (isProduct && exact) product = true; }
+        if (exact || (!isProduct && hit(t, text, ft))) {
+          const whole = isProduct && exact && names(t);
+          const v = HINT.has(t) ? 1 : isProduct && !whole ? 4 : w; sum += v; best = Math.max(best, v); if (whole) product = true;
+        }
       }
       // The whole product name beats part of one: "jira" is all of Jira and a third of Jira Service Management.
       if (product && [l.name, ...(l.alternativeTo || [])].some(p => { const pt = nameWords(p); return pt.length === 1 && pt[0] === t; })) best += 1;
@@ -132,10 +147,15 @@ export function rank(listings, q, filters = {}) {
     }
     if (!qt.length) score = 1;
     // One incidental common word is not a match. Two distinct words are, a product name is, and a single word is when
-    // it is the whole question, or when it is rare in the directory and sits in the name or tagline: "booking" alone
-    // finds the booking tools, "manager" finds nothing, and "sell" inside one use-when line does not drag a listing in.
+    // it is the whole question, or when it is at least half of what was asked and either names the product ("invoice"
+    // in Invoice Ninja) or is rare in the directory and sits in the tagline: "booking" alone finds the booking tools,
+    // "bookings and invoices" finds both kinds, "manager" finds nothing, "sell" inside one use-when line does not drag
+    // a listing in, and one word out of "church membership database" is not an answer to it. A two-need question thus
+    // prefers a listing that is the answer to one need over one that brushes both; a longer question that matches one
+    // word is better served by the vertical hint.
     const lone = [...hits][0];
-    const strong = hits.size >= 2 || product || (subjects <= 1 && hits.size === 1) || (hits.size === 1 && (df[lone] || 0) <= rare && weight[lone] >= 3);
+    const strong = hits.size >= 2 || product || (subjects <= 1 && hits.size === 1) ||
+      (hits.size === 1 && subjects <= 2 && (weight[lone] >= 4 || ((df[lone] || 0) <= rare && weight[lone] >= 3)));
     if (score > 0 && (strong || !qt.length)) out.push({ ...l, score: +score.toFixed(2), matched: [...hits], product });
   }
   // Ties: an interface an agent can drive beats screen control (CONTEXT.md sorts GUI last), then less effort, then name.
@@ -215,10 +235,19 @@ export function line(l, base) {
   return `${l.slug}\n  ${l.tagline || l.summary}\n  ${caps} · yours: ${yours} · agent: ${agent} · ${licenseText(l)}${l.a2a ? ` · A2A: ${l.a2a}` : ""}${l.paid ? " · paid edition" : ""}${(l.alternativeTo || []).length ? ` · alt to ${l.alternativeTo.join(", ")}` : ""}\n  ${base}/${l.url}  json: ${base}/apps/${l.slug}.json`;
 }
 export const stackLine = s => `Stack: ${s.name}\n  ${s.roles.map(r => `${r.job}: ${r.name}${r.fits === false ? " (outside your filters)" : ""}`).join(" · ")}\n  ${s.page}  md: ${s.markdown}`;
-// What to say when a search finds nothing or little: the vertical the words point at, if any.
-export function hint(q) {
+// What to say when a search finds nothing or little. A weak match printed as an answer misleads, so the answer is the
+// vertical the words point at with its listing count, which a vertical filter and an empty query lists whole, and the
+// submit page for software that belongs here and is missing. The CLI and the MCP server carry the same data.
+export function nearest(q, listings = []) {
   const v = verticalFor(q);
-  return v ? `Try the whole vertical: --vertical ${v} with an empty query.` : "Try fewer words, a vertical (--vocab lists them), or the name of the product to replace.";
+  return v ? { vertical: v, count: listings.filter(l => l.vertical === v).length } : null;
+}
+export const submitPage = base => `${base}/submit.html`;
+export function hint(q, listings = [], base = "https://mothermachine.ai") {
+  const n = nearest(q, listings);
+  const browse = n ? `The nearest vertical is ${n.vertical} (${n.count} listing${n.count === 1 ? "" : "s"}); an empty query filtered to vertical ${n.vertical} lists it whole.`
+    : "No vertical matches these words; try fewer words, the name of the product to replace, or --vocab for the verticals.";
+  return `${browse} If software that belongs here is missing: ${submitPage(base)}`;
 }
 
 async function main() {
@@ -240,11 +269,11 @@ async function main() {
   if (flag("json")) { console.log(JSON.stringify({ base, query, filters, count: res.length, stacks, compare: compare.map(c => ({ ...c, page: `${base}/${c.page}` })), results: res.map(({ effortRank, ...r }) => r) })); return; }
   // A stack answers a business better than any one listing, so it comes first, and it stands even when no listing matched.
   for (const s of stacks) console.log(stackLine(s) + "\n");
-  if (!res.length) { if (!stacks.length) console.log(`No matches for "${query}". ${hint(query)}`); return; }
+  if (!res.length) { if (!stacks.length) console.log(`Nothing in the directory clears the bar for "${query}". ${hint(query, listings, base)}`); return; }
   console.log(`${res.length} match${res.length === 1 ? "" : "es"} for "${query}" (${idx.count} listings searched)\n`);
   for (const l of res) console.log(line(l, base) + "\n");
   for (const c of compare) console.log(`Compare every ${c.product} alternative: ${base}/${c.page}`);
-  if (all.length < 3 && query && !stacks.length) console.log(`Thin result. ${hint(query)}`);
+  if (all.length < 3 && query && !stacks.length) console.log(`Thin result: only ${all.length} listing${all.length === 1 ? "" : "s"} clear${all.length === 1 ? "s" : ""} the bar. ${hint(query, listings, base)}`);
 }
 // Run main() only when this file is the command, not when imported by the tests. Compare real paths:
 // a skills folder reached through a symlink (macOS /var is one) would otherwise never match.

@@ -106,6 +106,15 @@ test("a lone common word in a tagline or name is not a match", () => {
   assert.deepEqual(rank(LIVE, "self-hosted password manager"), [], "manager alone does not find the asset manager");
   assert.deepEqual(rank(LIVE, "how do I write a recursive fibonacci in python"), [], "write does not find WriteFreely by its name");
 });
+test("a word matches the start of a longer word, in either spelling, and never its middle", () => {
+  const W = [
+    { slug: "i--ing", name: "Ledgerish", tagline: "Invoicing for freelancers", useWhen: [], alternativeTo: [], vertical: "invoicing-finance", capabilities: ["adaptable"], effort: "config-only" },
+    { slug: "b--book", name: "Slotly", tagline: "Appointments for clinics", useWhen: ["clients book appointments online"], alternativeTo: [], vertical: "scheduling-staffing", capabilities: ["adaptable"], effort: "config-only" },
+  ];
+  assert.equal(rank(W, "invoice")[0]?.slug, "i--ing", "invoice finds a tagline that only says invoicing");
+  assert.equal(rank(W, "invoices")[0]?.slug, "i--ing");
+  assert.deepEqual(rank(W, "point of sale"), [], "point does not hit the middle of appointments");
+});
 test("notes stays notes: the stemmer never turns a plural into another word", () => {
   const r = rank(LIVE, "a place for my notes that my agent can read and write");
   assert.equal(r[0].slug, "joplin", JSON.stringify(r.map(x => [x.slug, x.matched])));
@@ -138,7 +147,11 @@ test("jira names Jira, so Plane leads Jira Service Management tools and the comp
 test("a thin or empty search names the vertical the words point at", () => {
   assert.equal(S.verticalFor("sell t-shirts online"), "ecommerce");
   assert.equal(S.verticalFor("kubernetes operator"), null);
-  assert.match(S.hint("sell t-shirts online"), /--vertical ecommerce/);
+  const L9 = [{ vertical: "ecommerce" }, { vertical: "ecommerce" }, { vertical: "notes-knowledge" }];
+  assert.match(S.hint("sell t-shirts online", L9, "https://x"), /nearest vertical is ecommerce \(2 listings\)/);
+  assert.match(S.hint("sell t-shirts online", L9, "https://x"), /https:\/\/x\/submit\.html$/, "the submit page is the way in for missing software");
+  assert.deepEqual(S.nearest("sell t-shirts online", L9), { vertical: "ecommerce", count: 2 });
+  assert.equal(S.nearest("kubernetes operator", L9), null);
   assert.match(S.hint("kubernetes operator"), /fewer words/);
 });
 test("the result line says closed source and core closed, and the detail carries closedCore, mcpServer and the verdict", () => {
@@ -236,4 +249,31 @@ test("the command still answers when the site has no stacks index", async () => 
     assert.deepEqual(json.stacks, []); assert.equal(json.results[0].slug, "b--books");
     assert.ok(s.seen.includes("index/stacks.json"), "it tried");
   } finally { s.close(); }
+});
+
+// ---- the regression set --------------------------------------------------------------------
+// search.needs.json holds how people describe a need, with the listings that must be in the top three, and the
+// product-name queries that must keep working. It runs against this checkout's index/search.json, with no network.
+// The public mirror has no index, so the test skips there. A case marked pending is a known gap: it must still fail.
+const NEEDS = JSON.parse(fs.readFileSync(path.join(here, "search.needs.json"), "utf8"));
+const INDEX = path.join(here, "..", "..", "..", "index", "search.json");
+export function scoreNeeds(cases, listings) {
+  const out = { passed: [], failed: [] };
+  for (const c of cases) {
+    const r = rank(listings, c.q), top = r.slice(0, 3).map(x => x.slug);
+    const ok = c.top3.length ? c.top3.every(alt => alt.split("|").some(s => top.includes(s))) : r.length === 0 && S.verticalFor(c.q) === c.vertical;
+    (ok ? out.passed : out.failed).push({ q: c.q, top, want: c.top3, pending: c.pending });
+  }
+  return out;
+}
+test("plain-language needs find the right listing, and product names still do", { skip: !fs.existsSync(INDEX) && "no index/search.json in this checkout" }, () => {
+  const listings = JSON.parse(fs.readFileSync(INDEX, "utf8")).listings.map(l => ({ ...l, effortRank: S.EFFORT_RANK[l.effort] }));
+  for (const group of ["plain", "products"]) {
+    const cases = NEEDS[group], r = scoreNeeds(cases, listings);
+    console.log(`${group}: ${r.passed.length} of ${cases.length} pass${r.failed.some(f => f.pending) ? `, ${r.failed.filter(f => f.pending).length} pending` : ""}`);
+    const unexpected = r.failed.filter(f => !f.pending), fixed = r.passed.filter(p => p.pending);
+    assert.deepEqual(unexpected.map(f => `${f.q} -> ${f.top.join(", ") || "(none)"}; wanted ${f.want.join(" + ") || "none"}`), [], `${group} cases that fail`);
+    assert.deepEqual(fixed.map(p => p.q), [], `${group} cases marked pending that now pass; remove the mark`);
+  }
+  assert.ok(NEEDS.plain.length >= 30 && NEEDS.plain.filter(c => !c.top3.length).length >= 5, "the set covers thirty needs and five that have no answer");
 });

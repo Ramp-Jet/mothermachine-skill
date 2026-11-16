@@ -20,11 +20,13 @@ A short, decisive answer, not a catalog. Usually one to three candidates, each w
 - Gotchas and accounts needed, before the user starts. A copyleft license, an unsigned Mac build, or a Twilio account is exactly what they want to know now rather than an hour in.
 - Where the record is uncertain, say so. Every classified field carries confidence; `openQuestions` lists what the curator could not settle. `verdict` is the curator's: approve, dispute, or unverified. Most are unverified; say so in a word. A disputed record is a lead to check, not an answer.
 
-If nothing fits, say that plainly and suggest the nearest vertical, or the Candidate issue form on the site if the user knows of something that belongs there.
+If nothing fits, say that plainly, name the nearest vertical and how many listings it holds, and give the submit page (`https://mothermachine.ai/submit.html`) if the user knows of something that belongs there.
 
 ## Procedure
 
-1. Run the bundled script by its full path (this skill's directory plus `scripts/search.mjs`; it does not need a particular working directory). It fetches `index/search.json` once, ranks the user's words against names, alternative-to products, taglines and the listings' own "use it when" phrases, weighting rare words over common ones, and prints compact results with links. When the query names a kind of business it also fetches `index/stacks.json` and prints that business's stack first, even when no single listing matches.
+1. Translate the need before you search. The script matches words against names, alternative-to products, taglines and the listings' own "use it when" phrases; it does not understand sentences, and filler words ("take", "send", "manage", "need", "online") are dropped. Reduce what the user said to the one or two things the software must do, and run one short query for each: "I need an app to take bookings and send invoices" is `"booking"` and then `"invoicing"`, never the whole sentence. A message with two needs is two searches, not one. When the vertical is obvious, add `--vertical`.
+
+   Run the bundled script by its full path (this skill's directory plus `scripts/search.mjs`; it does not need a particular working directory). It fetches `index/search.json` once, ranks the query words against those fields, weighting rare words over common ones, and prints compact results with links. When the query names a kind of business it also fetches `index/stacks.json` and prints that business's stack first, even when no single listing matches.
 
    ```
    node <skill-dir>/scripts/search.mjs "<the user's need in their words>" [--vertical v] [--effort e] [--interface k] [--open] [--operable] [--adaptable] [--limit n]
@@ -34,7 +36,9 @@ If nothing fits, say that plainly and suggest the nearest vertical, or the Candi
 
    Constraints the user states are filters, not search words. "Open source" and "self-hosted" are stop words, so pass `--open` when they say open source, `--interface mcp` when the agent must drive it over MCP, and `--effort config-only` when they will not touch code.
 
-   Two habits make this reliable. Put the named product first if the user gave one ("calendly team booking" beats a paraphrase of their whole message), because the product name is the rarest and most telling word. When a vertical is obvious, run the query with `--vertical` and, if the top results still look off, run an empty query with the same `--vertical` to see the whole vertical; at four to sixteen listings each, reading the list is cheaper than guessing. A need in everyday words ("sell t-shirts online") often matches no record text; the script then names the vertical to browse. Browse it before saying nothing fits.
+   Two habits make this reliable. Put the named product first if the user gave one ("calendly team booking" beats a paraphrase of their whole message), because the product name is the rarest and most telling word. When a vertical is obvious, run the query with `--vertical` and, if the top results still look off, run an empty query with the same `--vertical` to see the whole vertical; at five to twenty-five listings each, reading the list is cheaper than guessing.
+
+   When nothing clears the bar, the script says so and names the nearest vertical with its listing count and the submit page; a thin result (one or two listings) carries the same note. A need in everyday words ("sell t-shirts online") often matches no record text. Browse the named vertical before saying nothing fits, and never pass a weak match to the user as the answer. The MCP server returns the same note as `hint`, `nearest` and `submit`.
 
 2. For the top one to three, fetch the full record with `--detail <slug>`. That is where reach (the jobs an agent can and cannot do), the customization surface (env vars, config files, prompt files), editions with prices, gotchas, accounts, closed core, the builder's MCP server, confidence, verdict and open questions live. Read reach before promising what an agent can do; the unreachable jobs are listed on purpose.
 

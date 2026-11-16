@@ -10,16 +10,16 @@
 // notifications ignored. Written out here rather than taken from an SDK so that one file installs from the site.
 import { createInterface } from "node:readline";
 import { stdin, stdout, argv } from "node:process";
-import { rank, get, loadIndex, detailOf, alternativesPages, hint, stacksFrom, fitting } from "./search.mjs";
+import { rank, get, loadIndex, detailOf, alternativesPages, hint, nearest, submitPage, stacksFrom, fitting } from "./search.mjs";
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const base = ((argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "") || "https://mothermachine.ai").replace(/\/$/, "");
 
 const TOOLS = [
-  { name: "search", description: "Search mothermachine.ai, a directory of software an agent can adapt (pull the source and configure it) or operate (drive it through an MCP server, API, CLI, or config). Give the user's need in their own words, the commercial product they want to replace (\"replace Calendly\"), or the kind of business they run (\"barbershop software\"). Returns ranked listings with the repo, how much is yours to change, how an agent reaches it, the license, and links to the page and JSON record. A query that names a kind of business also returns its stack: the page that names the listing for each job that business needs and how the apps hand work to each other. With a filter set, each of its jobs says whether its listing fits the filter. Empty query with a filter lists a whole slice.",
+  { name: "search", description: "Search mothermachine.ai, a directory of software an agent can adapt (pull the source and configure it) or operate (drive it through an MCP server, API, CLI, or config). Give one thing the software must do, in a word or two (\"booking\", \"invoicing\"), the commercial product to replace (\"replace Calendly\"), or the kind of business the user runs (\"barbershop software\"). A need with two parts is two calls. Returns ranked listings with the repo, how much is yours to change, how an agent reaches it, the license, and links to the page and JSON record. A query that names a kind of business also returns its stack: the page that names the listing for each job that business needs and how the apps hand work to each other. With a filter set, each of its jobs says whether its listing fits the filter. Empty query with a filter lists a whole slice.",
     inputSchema: { type: "object", properties: {
-      query: { type: "string", description: "The need or product name, in plain words. May be empty when a filter is set." },
+      query: { type: "string", description: "One need in a word or two (\"booking\"), or a product name. Not the user's whole sentence. May be empty when a filter is set." },
       vertical: { type: "string", description: "Restrict to one vertical; vocab lists the values." },
       effort: { type: "string", enum: ["config-only", "light-edit", "fork-and-modify"], description: "How much work it is to make it yours." },
       operability: { type: "string", description: "How an agent drives it; vocab lists the values (native, official, wrapped, config, gui)." },
@@ -52,8 +52,11 @@ async function run(name, a = {}) {
     let compare = [];
     if (results.some(r => r.product)) { try { compare = alternativesPages(results, query, (await get(base, "index/alternatives.json")).products).map(c => ({ ...c, page: `${base}/${c.page}` })); } catch { compare = []; } }
     const stacks = await stacksFrom(base, query, fitting(idx.listings, filters));
+    // The same hint the CLI prints, as data: the nearest vertical with its count and the submit page, so the client
+    // can say plainly that nothing cleared the bar instead of treating a thin list as the answer.
+    const thin = all.length < 3 && query && !stacks.length;
     return { base, query, filters, searched: idx.count, count: results.length, stacks, compare, results,
-      ...(all.length < 3 && query && !stacks.length ? { hint: `${all.length ? "Thin result. " : "No matches. "}${hint(query)}` } : {}) };
+      ...(thin ? { hint: `${all.length ? "Thin result: only " + all.length + " cleared the bar. " : "Nothing in the directory clears the bar. "}${hint(query, idx.listings, base)}`, nearest: nearest(query, idx.listings), submit: submitPage(base) } : {}) };
   }
   if (name === "listing") {
     if (!SLUG.test(String(a.slug || ""))) throw new Error("slug must be owner--name, letters, digits, dots, dashes and underscores only");
@@ -71,7 +74,7 @@ async function handle(msg) {
   const { id, method, params = {} } = msg;
   if (id === undefined) return; // notification: nothing to answer
   try {
-    if (method === "initialize") return reply(id, { protocolVersion: PROTOCOLS.includes(params.protocolVersion) ? params.protocolVersion : PROTOCOLS[0], capabilities: { tools: {} }, serverInfo: { name: "mothermachine", version: VERSION }, instructions: `Directory of software an agent can adapt or operate, read from ${base}. Use search with the user's own words or the product to replace, then listing for the one or two that fit. When search returns a stack, the user named a kind of business: lead with the stack page. Pass interface: "mcp" when the user needs MCP and open: true when they say open source; the words alone do not filter. A listing's verdict says whether the curator verified the record; most are unverified.` });
+    if (method === "initialize") return reply(id, { protocolVersion: PROTOCOLS.includes(params.protocolVersion) ? params.protocolVersion : PROTOCOLS[0], capabilities: { tools: {} }, serverInfo: { name: "mothermachine", version: VERSION }, instructions: `Directory of software an agent can adapt or operate, read from ${base}. Search matches words against listing names, the products they replace, taglines and use-when lines; it does not understand sentences. You are the translator: reduce the user's need to the one or two things the software must do and run one short query for each ("booking", then "invoicing"). A message with two needs is two searches, not one. Set vertical when it is obvious (vocab lists the values), and when the top results still look off, search an empty query with that vertical to read the whole slice. A result with a hint says nothing cleared the bar: say so plainly, offer the nearest vertical and its count from nearest, and the submit page; do not present a weak match as the answer. Then call listing for the one or two that fit. When search returns a stack, the user named a kind of business: lead with the stack page. Pass interface: "mcp" when the user needs MCP and open: true when they say open source; the words alone do not filter. A listing's verdict says whether the curator verified the record; most are unverified.` });
     if (method === "ping") return reply(id, {});
     if (method === "tools/list") return reply(id, { tools: TOOLS });
     if (method === "tools/call") {
