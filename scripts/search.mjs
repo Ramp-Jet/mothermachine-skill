@@ -29,15 +29,17 @@ const STOP = new Set(("a an the for to of and or with my our your i we is are be
   "before there here how does build building built make making place into onto what which where who why already exists exist " +
   // Filler verbs: a person says "take bookings", "send invoices", "manage stock", "keep notes", "handle returns". The verb says
   // nothing about which software; it scored anyway, so "take" alone found a tagline about raw takes and "sending" pulled an HR
-  // suite above a booking tool. The noun beside the verb is the need. "online" is on the same list: every listing is online.
+  // suite above a booking tool. The noun beside the verb is the need.
   "take takes taking took send sends sending sent manage manages managing management handle handles handling keep keeps keeping " +
-  "automate automated automating automatically online").split(" "));
+  "automate automated automating automatically").split(" "));
 // Two-letter words (do, is, my) never name a need, so they are not tokens at all.
 const words = s => String(s || "").toLowerCase().replace(/[^a-z0-9+#. -]/g, " ").split(/[\s/,;:()\-]+/).filter(Boolean);
 const tokens = s => words(s).filter(t => t.length > 2 && !STOP.has(t));
-// A light stemmer: strip -ing, -ers, -er, then a plural. "es" comes off only after a sibilant, so "notes" stays "note"
-// and never matches the word "not"; "invoices" becomes "invoice" and still finds "invoicing" as a prefix.
-const stem = t => t.replace(/(ing|ers|er)$/, "").replace(/(ss|sh|ch|x|z)es$/, "$1").replace(/([^s])s$/, "$1");
+// A light stemmer: strip a plural, then -ing, -ers, -er, so "bookings" and "booking" agree and "invoices" agrees with
+// "invoice". "es" comes off only after a sibilant, so "notes" stays "note" and never matches the word "not". The suffix
+// comes off only when five letters remain: "booking" stays "booking" rather than becoming "book", which is a ledger
+// word in half the finance listings, and "billing" and "selling" keep their meaning the same way.
+const stem = t => t.replace(/(ss|sh|ch|x|z)es$/, "$1").replace(/([^s])s$/, "$1").replace(/(.{5,})(ing|ers|er)$/, "$1");
 // Interface words describe how, not what. Half the directory mentions them, so they count as a hint, never a subject.
 // Stemmed like the query tokens they are compared with: "server" arrives as "serv", and unstemmed it scored as a subject.
 const HINT = new Set(["api", "rest", "mcp", "cli", "sdk", "server", "docker", "webhook", "webhooks"].map(t => stem(t)));
@@ -53,8 +55,10 @@ const queryTerms = (q, listings) => {
 };
 // Fields a query word can hit, with weight. The third item marks a product field: a hit there is the strongest
 // evidence there is, so it must be an exact word ("quickbooks"), never a fragment ("manag" inside "Management").
+// needs are the words people use to ask for the software (adr/0026): written to be matched, so a hit there outranks
+// the tagline, which happens to say "booking" or not, and sits below a product name, which is the rarest clue of all.
 const FIELDS = l => [
-  [l.name, 5, true], [(l.alternativeTo || []).join(" "), 5, true], [l.tagline || l.summary, 3],
+  [l.name, 5, true], [(l.alternativeTo || []).join(" "), 5, true], [(l.needs || []).join(" "), 4], [l.tagline || l.summary, 3],
   [(l.useWhen || []).join(" "), 2], [l.vertical, 2], [l.shape, 1], [(l.accounts || []).join(" "), 1],
   [l.a2a ? "a2a" : "", 3],
 ];
@@ -159,7 +163,20 @@ export function rank(listings, q, filters = {}) {
     if (score > 0 && (strong || !qt.length)) out.push({ ...l, score: +score.toFixed(2), matched: [...hits], product });
   }
   // Ties: an interface an agent can drive beats screen control (CONTEXT.md sorts GUI last), then less effort, then name.
-  return out.sort((a, b) => b.score - a.score || (OP_RANK[a.operability] ?? 4) - (OP_RANK[b.operability] ?? 4) || (a.effortRank ?? 9) - (b.effortRank ?? 9) || a.name.localeCompare(b.name));
+  out.sort((a, b) => b.score - a.score || (OP_RANK[a.operability] ?? 4) - (OP_RANK[b.operability] ?? 4) || (a.effortRank ?? 9) - (b.effortRank ?? 9) || a.name.localeCompare(b.name));
+  return subjects >= 2 ? coverTop(out) : out;
+}
+// A question with two needs ("bookings and invoices") has listings that answer one or the other, and the need with the most
+// record text crowds the top. So the first three results cover as many matched words as the whole list does: each slot takes
+// the best remaining listing that matches a word the slots above it do not, else the best remaining. Below the third slot the
+// order is by score alone, and a listing never enters the top three that was not a match on its own.
+function coverTop(out) {
+  const top = [], covered = new Set(); let rest = out;
+  for (let i = 0; i < 3 && rest.length; i++) {
+    const next = rest.find(r => r.matched.some(t => !covered.has(t))) || rest[0];
+    top.push(next); for (const t of next.matched) covered.add(t); rest = rest.filter(r => r !== next);
+  }
+  return [...top, ...rest];
 }
 
 // The products a query names that have a compare page, so the answer can link it.

@@ -277,3 +277,18 @@ test("plain-language needs find the right listing, and product names still do", 
   }
   assert.ok(NEEDS.plain.length >= 30 && NEEDS.plain.filter(c => !c.top3.length).length >= 5, "the set covers thirty needs and five that have no answer");
 });
+
+test("a plural of an -ing word matches the word: bookings, booking and book agree", () => {
+  const P = [{ slug: "p--plural", name: "Slotly", tagline: "Appointments for clinics", useWhen: ["clients make bookings online"], alternativeTo: [], vertical: "scheduling-staffing", capabilities: ["adaptable"], effort: "config-only" }];
+  for (const q of ["booking", "bookings"]) assert.equal(rank(P, q)[0]?.slug, "p--plural", q);
+  assert.deepEqual(rank([{ ...P[0], useWhen: ["I keep my books in git"] }], "booking"), [], "booking is not the ledger word book");
+});
+test("needs score above the tagline and use-when lines and below the name and alternativeTo", () => {
+  const N = [
+    { slug: "t--tag", name: "Tagly", tagline: "Booking pages for clinics", useWhen: [], needs: [], alternativeTo: [], vertical: "scheduling-staffing", capabilities: ["adaptable"], effort: "config-only" },
+    { slug: "n--need", name: "Needly", tagline: "Appointments for clinics", useWhen: [], needs: ["take bookings"], alternativeTo: [], vertical: "scheduling-staffing", capabilities: ["adaptable"], effort: "config-only" },
+    { slug: "u--use", name: "Usely", tagline: "Appointments for clinics", useWhen: ["I take bookings by phone"], needs: [], alternativeTo: [], vertical: "scheduling-staffing", capabilities: ["adaptable"], effort: "config-only" },
+    { slug: "a--alt", name: "Alty", tagline: "Appointments for clinics", useWhen: [], needs: [], alternativeTo: ["Booking"], vertical: "scheduling-staffing", capabilities: ["adaptable"], effort: "config-only" },
+  ];
+  assert.deepEqual(rank(N, "booking").map(l => l.slug), ["a--alt", "n--need", "t--tag", "u--use"]);
+});
